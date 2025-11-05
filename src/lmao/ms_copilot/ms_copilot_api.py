@@ -22,28 +22,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-import gc
 import imghdr
 import json
 import logging
 import os
 import subprocess
 import tempfile
-import threading
 import time
-import uuid
+import threading
 from collections.abc import Generator
 from typing import Any, Dict
+import uuid
 
-import undetected_chromedriver
 from markdownify import markdownify
-from selenium.common.exceptions import TimeoutException
+import undetected_chromedriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.wait import WebDriverWait
+from selenium.common.exceptions import TimeoutException
 
 from lmao.ms_copilot.proxy_extension import ProxyExtension
+
 
 # JS script that injects "large" JS file into <head></head>. Pass script's content as first argument
 _INJECT_JS = """
@@ -56,7 +56,7 @@ window.document.head.appendChild(injectedScript);
 # JS script that returns searchbox element or null without raising any error
 _GET_SEARCHBOX = """
 try {
-    return document.querySelector("#b_sydConvCont > cib-serp").shadowRoot.querySelector("#cib-action-bar-main").shadowRoot.querySelector("div > div.main-container > div > div.input-row > cib-text-input").shadowRoot.querySelector("#searchbox");
+    return document.getElementById("userInput");
 } catch (error) {
     console.error(error);
 }
@@ -65,17 +65,17 @@ return null;
 
 # JS script that returns submit button
 _GET_SUBMIT_BUTTON = """
-return document.querySelector("#b_sydConvCont > cib-serp").shadowRoot.querySelector("#cib-action-bar-main").shadowRoot.querySelector("div > div.main-container > div > div.bottom-controls > div.bottom-right-controls > div.control.submit > button");
+return document.querySelector("button[data-testid='submit-button']");
 """
 
 # JS script that returns input element that accepts images
 _GET_IMAGE_INPUT = """
-return document.querySelector("#b_sydConvCont > cib-serp").shadowRoot.querySelector("#cib-action-bar-main").shadowRoot.querySelectorAll("#vs_fileinput")[0]
+return document.querySelector('input[type="file"][accept]');
 """
 
 # JS script that pastes text into searchbox and returns searchbox itself
 _PASTE_TEXT = """
-const searchBox = document.querySelector("#b_sydConvCont > cib-serp").shadowRoot.querySelector("#cib-action-bar-main").shadowRoot.querySelector("div > div.main-container > div > div.input-row > cib-text-input").shadowRoot.querySelector("#searchbox");
+const searchBox = document.getElementById("userInput");
 searchBox.focus();
 searchBox.value = arguments[0];
 searchBox.dispatchEvent(
@@ -87,12 +87,12 @@ return searchBox;
 # JS script that sets conversation style (WORKS ONLY ON NEW CONVERSATIONS). Pass 1 / 2 / 3 as argument
 # (1 - Creative, 2 - Balanced, 3 - Precise)
 _SET_STYLE = """
-document.querySelector("#b_sydConvCont > cib-serp").shadowRoot.querySelector("#cib-conversation-main").shadowRoot.querySelector("#cib-chat-main > cib-welcome-container").shadowRoot.querySelector("div.controls > cib-tone-selector").shadowRoot.querySelector("#tone-options > li:nth-child(" + arguments[0] + ") > button").click();
+document.querySelector("button[data-testid='composer-chat-mode-quick-button']").click();
 """
 
 # JS script that returns "Stop responding" button
 _STOP_RESPONDING = """
-return document.querySelector("#b_sydConvCont > cib-serp").shadowRoot.querySelector("#cib-action-bar-main").shadowRoot.querySelector("div > cib-typing-indicator").shadowRoot.querySelector("#stop-responding-button");
+return document.querySelector("button[data-testid='stop-button']");
 """
 
 # "large" JS files
@@ -305,6 +305,7 @@ class MSCopilotApi:
                 options=chrome_options,
                 headless=headless,
                 enable_cdp_events=True,
+                user_multi_procs=True,
                 **kwargs,
             )
 
@@ -350,9 +351,6 @@ class MSCopilotApi:
             except Exception:
                 pass
             self.driver = None
-
-            # Cleanup
-            gc.collect()
 
             # Raise exception after
             raise e
@@ -781,9 +779,6 @@ class MSCopilotApi:
         time.sleep(1)
         self.driver = None
         logging.info("Browser closed")
-
-        # Cleanup
-        gc.collect()
 
     def cookies_save(self) -> None:
         """Retrieves cookies from current session and updates existing one and save them to file"""
